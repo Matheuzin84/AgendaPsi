@@ -1,0 +1,151 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: patients
+    // Fields:
+    //   - name: string (required)
+    //   - phone: string (optional)
+    //   - email: string (optional)
+    //   - notes: string (optional)
+    //   - defaultPrice: number (optional)
+    //   - psychologistId: string (required, immutable)
+    //   - createdAt: timestamp (required, immutable)
+    //
+    // Collection: sessions
+    // Fields:
+    //   - patientId: string (required)
+    //   - patientName: string (required)
+    //   - date: string (required)
+    //   - time: string (required)
+    //   - location: string (optional)
+    //   - locationUri: string (optional)
+    //   - meetingLink: string (optional)
+    //   - type: string (required, enum: ['online', 'physical'])
+    //   - observation: string (optional)
+    //   - price: number (optional)
+    //   - status: string (required, enum: ['pending', 'confirmed', 'cancelled', 'completed'])
+    //   - psychologistId: string (required, immutable)
+    //
+    // Collection: medicalRecords
+    // Fields:
+    //   - patientId: string (required)
+    //   - sessionId: string (required)
+    //   - rawNotes: string (required)
+    //   - summary: string (required)
+    //   - evolution: string (required)
+    //   - psychologistId: string (required, immutable)
+    //   - createdAt: timestamp (required, immutable)
+    //
+    // Collection: messages
+    // Fields:
+    //   - text: string (required)
+    //   - senderId: string (required)
+    //   - patientId: string (required)
+    //   - psychologistId: string (required, immutable)
+    //   - createdAt: timestamp (required, immutable)
+    //
+    // ===============================================================
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.psychologistId;
+    }
+
+    function isNewDocOwner() {
+      return isAuthenticated() && request.auth.uid == request.resource.data.psychologistId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.email == "mateusdomingos28@hotmail.com" && request.auth.token.email_verified == true);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    // Domain Validators
+    function isValidPatient(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             (!('email' in data) || (data.email is string && data.email.size() < 100)) &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() < 30)) &&
+             data.psychologistId is string &&
+             data.psychologistId == request.auth.uid;
+    }
+
+    function isValidSession(data) {
+      return data.patientId is string &&
+             data.patientName is string &&
+             data.date is string &&
+             data.time is string &&
+             data.type in ['online', 'physical'] &&
+             data.status in ['pending', 'confirmed', 'cancelled', 'completed'] &&
+             data.psychologistId is string &&
+             data.psychologistId == request.auth.uid;
+    }
+
+    function isValidMedicalRecord(data) {
+      return data.patientId is string &&
+             data.sessionId is string &&
+             data.psychologistId is string &&
+             data.psychologistId == request.auth.uid;
+    }
+
+    function isValidMessage(data) {
+      return data.text is string && data.text.size() > 0 && data.text.size() < 5000 &&
+             data.senderId is string &&
+             data.patientId is string &&
+             data.psychologistId is string &&
+             data.psychologistId == request.auth.uid;
+    }
+
+    // Patients
+    match /patients/{patientId} {
+      allow read: if isAuthenticated() && (isDocOwner() || isAdmin());
+      allow create: if isAuthenticated() && isValidPatient(request.resource.data);
+      allow update: if isAuthenticated() && isDocOwner() && isValidPatient(request.resource.data) && areImmutableFieldsUnchanged(['psychologistId', 'createdAt']);
+      allow delete: if isAuthenticated() && (isDocOwner() || isAdmin());
+    }
+
+    // Sessions
+    match /sessions/{sessionId} {
+      allow read: if isAuthenticated() && (isDocOwner() || isAdmin());
+      allow create: if isAuthenticated() && isValidSession(request.resource.data);
+      allow update: if isAuthenticated() && isDocOwner() && isValidSession(request.resource.data) && areImmutableFieldsUnchanged(['psychologistId']);
+      allow delete: if isAuthenticated() && (isDocOwner() || isAdmin());
+    }
+
+    // Medical Records
+    match /medicalRecords/{recordId} {
+      allow read: if isAuthenticated() && (isDocOwner() || isAdmin());
+      allow create: if isAuthenticated() && isValidMedicalRecord(request.resource.data);
+      allow update: if isAuthenticated() && isDocOwner() && isValidMedicalRecord(request.resource.data) && areImmutableFieldsUnchanged(['psychologistId', 'createdAt']);
+      allow delete: if isAuthenticated() && (isDocOwner() || isAdmin());
+    }
+
+    // Messages
+    match /messages/{messageId} {
+      allow read: if isAuthenticated() && (isDocOwner() || isAdmin());
+      allow create: if isAuthenticated() && isValidMessage(request.resource.data);
+      allow delete: if isAuthenticated() && (isDocOwner() || isAdmin());
+    }
+
+  }
+}

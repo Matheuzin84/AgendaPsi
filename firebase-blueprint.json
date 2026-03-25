@@ -1,0 +1,70 @@
+{
+  "entities": {
+    "Patient": {
+      "title": "Patient",
+      "description": "A patient registered in the system",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Full name of the patient" },
+        "phone": { "type": "string", "description": "Phone number" },
+        "email": { "type": "string", "description": "Email address" },
+        "notes": { "type": "string", "description": "General notes about the patient" },
+        "defaultPrice": { "type": "number", "description": "Default session price for this patient" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "psychologistId": { "type": "string", "description": "ID of the psychologist who owns this record" }
+      },
+      "required": ["name", "psychologistId"]
+    },
+    "Session": {
+      "title": "Session",
+      "description": "A scheduled therapy session",
+      "type": "object",
+      "properties": {
+        "patientId": { "type": "string", "description": "ID of the patient" },
+        "patientName": { "type": "string", "description": "Name of the patient (denormalized for quick view)" },
+        "date": { "type": "string", "format": "date", "description": "Date of the session" },
+        "time": { "type": "string", "description": "Time of the session" },
+        "location": { "type": "string", "description": "Location of the session (e.g., Office, Online)" },
+        "locationUri": { "type": "string", "description": "URI for the location" },
+        "meetingLink": { "type": "string", "description": "Link for online meeting" },
+        "type": { "type": "string", "enum": ["online", "physical"], "description": "Type of session" },
+        "observation": { "type": "string", "description": "Quick observation/notes for the session" },
+        "price": { "type": "number", "description": "Price charged for this specific session" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "cancelled", "completed"], "description": "Status of the session" },
+        "psychologistId": { "type": "string", "description": "ID of the psychologist" }
+      },
+      "required": ["patientId", "date", "time", "psychologistId"]
+    },
+    "MedicalRecord": {
+      "title": "Medical Record",
+      "description": "A formal medical record generated for a session",
+      "type": "object",
+      "properties": {
+        "patientId": { "type": "string", "description": "ID of the patient" },
+        "sessionId": { "type": "string", "description": "ID of the associated session" },
+        "rawNotes": { "type": "string", "description": "Original notes written by the psychologist" },
+        "summary": { "type": "string", "description": "AI generated summary" },
+        "clinicalObservations": { "type": "string", "description": "AI generated clinical observations" },
+        "evolution": { "type": "string", "description": "AI generated patient evolution" },
+        "nextSessionPlan": { "type": "string", "description": "AI generated plan for next session" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Generation timestamp" },
+        "psychologistId": { "type": "string", "description": "ID of the psychologist" }
+      },
+      "required": ["patientId", "sessionId", "psychologistId"]
+    }
+  },
+  "firestore": {
+    "/patients/{patientId}": {
+      "schema": "Patient",
+      "description": "Collection of patients"
+    },
+    "/sessions/{sessionId}": {
+      "schema": "Session",
+      "description": "Collection of sessions"
+    },
+    "/medicalRecords/{recordId}": {
+      "schema": "MedicalRecord",
+      "description": "Collection of medical records"
+    }
+  }
+}

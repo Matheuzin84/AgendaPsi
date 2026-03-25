@@ -1,0 +1,5 @@
+{
+  "name": "AgendaPsi",
+  "description": "Plataforma simples e intuitiva para psicólogos organizarem agendamentos e gerarem prontuários automáticos com IA.",
+  "requestFramePermissions": []
+}
