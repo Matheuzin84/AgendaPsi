@@ -232,22 +232,31 @@ export default function App() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>([]);
   const [darkMode, setDarkMode] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('darkMode');
-      return saved ? JSON.parse(saved) : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    try {
+      if (typeof window !== 'undefined') {
+        const saved = localStorage.getItem('darkMode');
+        if (saved !== null) return JSON.parse(saved);
+        return window.matchMedia('(prefers-color-scheme: dark)').matches;
+      }
+    } catch (e) {
+      console.warn("LocalStorage access denied", e);
     }
     return false;
   });
 
   // Dark Mode
   useEffect(() => {
-    const root = window.document.documentElement;
-    if (darkMode) {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
+    try {
+      const root = window.document.documentElement;
+      if (darkMode) {
+        root.classList.add('dark');
+      } else {
+        root.classList.remove('dark');
+      }
+      localStorage.setItem('darkMode', JSON.stringify(darkMode));
+    } catch (e) {
+      console.warn("Failed to save dark mode preference", e);
     }
-    localStorage.setItem('darkMode', JSON.stringify(darkMode));
   }, [darkMode]);
 
   // Auth
@@ -513,15 +522,17 @@ function NavItem({ active, onClick, icon, label }: { active: boolean, onClick: (
 }
 
 function Dashboard({ sessions, patients, onViewCalendar }: { sessions: Session[], patients: Patient[], onViewCalendar: () => void }) {
+  const [selectedMonth, setSelectedMonth] = useState(format(new Date(), 'yyyy-MM'));
   const today = format(new Date(), 'yyyy-MM-dd');
   
   const todaySessions = sessions.filter(s => s.date === today && (s.status === 'pending' || s.status === 'confirmed'));
   const upcomingSessions = sessions.filter(s => s.date > today && (s.status === 'pending' || s.status === 'confirmed')).slice(0, 5);
   
-  const currentMonth = format(new Date(), 'yyyy-MM');
-  const monthSessions = sessions.filter(s => s.date.startsWith(currentMonth) && s.status === 'completed');
+  const monthSessions = sessions.filter(s => s.date.startsWith(selectedMonth) && s.status === 'completed');
   const monthRevenue = monthSessions.reduce((acc, s) => acc + (s.price || 0), 0);
   const monthPatientsCount = new Set(monthSessions.map(s => s.patientId)).size;
+
+  const selectedDate = parseISO(`${selectedMonth}-01`);
 
   return (
     <div className="space-y-6 md:space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -530,11 +541,22 @@ function Dashboard({ sessions, patients, onViewCalendar }: { sessions: Session[]
           <h2 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100 tracking-tight">Olá, Psicólogo(a)</h2>
           <p className="text-sm md:text-base text-slate-500 dark:text-slate-400">Aqui está o resumo do seu dia e desempenho mensal.</p>
         </div>
-        <div className="bg-white dark:bg-slate-900 px-3 py-1.5 md:px-4 md:py-2 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-2 self-start md:self-auto">
-          <CalendarIcon className="w-3.5 h-3.5 md:w-4 md:h-4 text-primary" />
-          <span className="text-xs md:text-sm font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-            {format(new Date(), 'MMMM yyyy', { locale: ptBR })}
-          </span>
+        <div className="flex items-center gap-3">
+          <div className="flex flex-col items-end gap-1">
+            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">Filtrar Mês</span>
+            <input 
+              type="month" 
+              value={selectedMonth} 
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="bg-white dark:bg-slate-900 px-3 py-1.5 md:px-4 md:py-2 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm text-xs md:text-sm font-semibold text-slate-700 dark:text-slate-300 outline-none focus:ring-2 focus:ring-primary/20 transition-all cursor-pointer"
+            />
+          </div>
+          <div className="bg-white dark:bg-slate-900 px-3 py-1.5 md:px-4 md:py-2 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center gap-2 self-start md:self-auto h-[38px] md:h-[44px] mt-auto">
+            <CalendarIcon className="w-3.5 h-3.5 md:w-4 md:h-4 text-primary" />
+            <span className="text-xs md:text-sm font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+              {format(selectedDate, 'MMMM yyyy', { locale: ptBR })}
+            </span>
+          </div>
         </div>
       </header>
 
@@ -552,14 +574,14 @@ function Dashboard({ sessions, patients, onViewCalendar }: { sessions: Session[]
           color="bg-violet-50 dark:bg-violet-900/20"
         />
         <StatCard 
-          label="Atendidos no Mês" 
+          label={`Atendidos em ${format(selectedDate, 'MMM', { locale: ptBR })}`} 
           value={monthPatientsCount} 
           icon={<Users className="text-emerald-600 dark:text-emerald-400" />} 
           color="bg-emerald-50 dark:bg-emerald-900/20"
           subtext="Pacientes únicos"
         />
         <StatCard 
-          label="Faturamento Mês" 
+          label={`Faturamento ${format(selectedDate, 'MMM', { locale: ptBR })}`} 
           value={monthRevenue} 
           isCurrency
           icon={<Sparkles className="text-amber-600 dark:text-amber-400" />} 
@@ -591,6 +613,71 @@ function Dashboard({ sessions, patients, onViewCalendar }: { sessions: Session[]
             )) : (
               <p className="text-center py-8 text-slate-400 dark:text-slate-500">Sem sessões futuras agendadas.</p>
             )}
+          </div>
+        </div>
+      </div>
+
+      {/* Billing Detail Table */}
+      <div className="glass-card p-4 md:p-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+          <div className="space-y-1">
+            <h3 className="text-base md:text-lg font-semibold dark:text-slate-100 flex items-center gap-2">
+              <Sparkles className="w-4 h-4 md:w-5 md:h-5 text-amber-500" />
+              Detalhamento de Faturamento
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium capitalize">
+              {format(selectedDate, 'MMMM yyyy', { locale: ptBR })}
+            </p>
+          </div>
+          <div className="bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1.5 md:px-4 md:py-2 rounded-xl border border-emerald-100 dark:border-emerald-800/50 self-start sm:self-auto">
+            <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold uppercase tracking-wider block">Total do Mês</span>
+            <span className="text-lg md:text-xl font-bold text-emerald-700 dark:text-emerald-300">
+              {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(monthRevenue)}
+            </span>
+          </div>
+        </div>
+        
+        <div className="overflow-x-auto -mx-4 md:-mx-6 px-4 md:px-6">
+          <div className="min-w-[400px]">
+            <table className="w-full text-xs md:text-sm text-left border-collapse">
+              <thead className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400 uppercase bg-slate-50/50 dark:bg-slate-800/30">
+                <tr>
+                  <th className="px-3 md:px-4 py-3 font-bold border-b border-slate-100 dark:border-slate-800">Data</th>
+                  <th className="px-3 md:px-4 py-3 font-bold border-b border-slate-100 dark:border-slate-800">Paciente</th>
+                  <th className="px-3 md:px-4 py-3 font-bold border-b border-slate-100 dark:border-slate-800 text-right">Valor</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {monthSessions.length > 0 ? (
+                  monthSessions
+                    .sort((a, b) => b.date.localeCompare(a.date))
+                    .map(session => (
+                      <tr key={session.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors group">
+                        <td className="px-3 md:px-4 py-3 text-slate-600 dark:text-slate-400 font-medium whitespace-nowrap">
+                          {format(parseISO(session.date), 'dd/MM/yy')}
+                        </td>
+                        <td className="px-3 md:px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-5 h-5 md:w-6 md:h-6 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center text-[8px] md:text-[10px] font-bold text-slate-500 shrink-0">
+                              {session.patientName[0]}
+                            </div>
+                            <span className="font-semibold text-slate-900 dark:text-slate-100 truncate max-w-[120px] md:max-w-none block">{session.patientName}</span>
+                          </div>
+                        </td>
+                        <td className="px-3 md:px-4 py-3 text-right font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(session.price || 0)}
+                        </td>
+                      </tr>
+                    ))
+                ) : (
+                  <tr>
+                    <td colSpan={3} className="px-4 py-12 text-center text-slate-400 dark:text-slate-500 italic">
+                      Nenhuma sessão concluída neste mês para exibir no detalhamento.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
