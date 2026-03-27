@@ -617,8 +617,8 @@ function Dashboard({ sessions, patients, onViewCalendar }: { sessions: Session[]
         </div>
       </div>
 
-      {/* Billing Detail Table */}
-      <div className="glass-card p-4 md:p-6">
+      {/* Billing Detail Section */}
+      <div className="glass-card p-4 md:p-6 overflow-hidden">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div className="space-y-1">
             <h3 className="text-base md:text-lg font-semibold dark:text-slate-100 flex items-center gap-2">
@@ -637,48 +637,85 @@ function Dashboard({ sessions, patients, onViewCalendar }: { sessions: Session[]
           </div>
         </div>
         
-        <div className="overflow-x-auto -mx-4 md:-mx-6 px-4 md:px-6">
-          <div className="min-w-[400px]">
-            <table className="w-full text-xs md:text-sm text-left border-collapse">
-              <thead className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400 uppercase bg-slate-50/50 dark:bg-slate-800/30">
-                <tr>
-                  <th className="px-3 md:px-4 py-3 font-bold border-b border-slate-100 dark:border-slate-800">Data</th>
-                  <th className="px-3 md:px-4 py-3 font-bold border-b border-slate-100 dark:border-slate-800">Paciente</th>
-                  <th className="px-3 md:px-4 py-3 font-bold border-b border-slate-100 dark:border-slate-800 text-right">Valor</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {monthSessions.length > 0 ? (
-                  monthSessions
-                    .sort((a, b) => b.date.localeCompare(a.date))
-                    .map(session => (
-                      <tr key={session.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors group">
-                        <td className="px-3 md:px-4 py-3 text-slate-600 dark:text-slate-400 font-medium whitespace-nowrap">
-                          {format(parseISO(session.date), 'dd/MM/yy')}
-                        </td>
-                        <td className="px-3 md:px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <div className="w-5 h-5 md:w-6 md:h-6 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center text-[8px] md:text-[10px] font-bold text-slate-500 shrink-0">
-                              {session.patientName[0]}
-                            </div>
-                            <span className="font-semibold text-slate-900 dark:text-slate-100 truncate max-w-[120px] md:max-w-none block">{session.patientName}</span>
+        {/* Desktop Table View */}
+        <div className="hidden md:block overflow-hidden">
+          <table className="w-full text-sm text-left border-collapse">
+            <thead className="text-xs text-slate-500 dark:text-slate-400 uppercase bg-slate-50/50 dark:bg-slate-800/30">
+              <tr>
+                <th className="px-4 py-3 font-bold border-b border-slate-100 dark:border-slate-800">Data</th>
+                <th className="px-4 py-3 font-bold border-b border-slate-100 dark:border-slate-800">Paciente</th>
+                <th className="px-4 py-3 font-bold border-b border-slate-100 dark:border-slate-800 text-right">Valor</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              {monthSessions.length > 0 ? (
+                monthSessions
+                  .sort((a, b) => b.date.localeCompare(a.date))
+                  .map(session => (
+                    <tr key={session.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-colors group">
+                      <td className="px-4 py-3 text-slate-600 dark:text-slate-400 font-medium whitespace-nowrap">
+                        {format(parseISO(session.date), 'dd/MM/yyyy')}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center text-[10px] font-bold text-slate-500 shrink-0">
+                            {session.patientName[0]}
                           </div>
-                        </td>
-                        <td className="px-3 md:px-4 py-3 text-right font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
-                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(session.price || 0)}
-                        </td>
-                      </tr>
-                    ))
-                ) : (
-                  <tr>
-                    <td colSpan={3} className="px-4 py-12 text-center text-slate-400 dark:text-slate-500 italic">
-                      Nenhuma sessão concluída neste mês para exibir no detalhamento.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+                          <span className="font-semibold text-slate-900 dark:text-slate-100">{session.patientName}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-right font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(session.price || 0)}
+                      </td>
+                    </tr>
+                  ))
+              ) : (
+                <tr>
+                  <td colSpan={3} className="px-4 py-12 text-center text-slate-400 dark:text-slate-500 italic">
+                    Nenhuma sessão concluída neste mês.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Mobile List View */}
+        <div className="md:hidden space-y-2">
+          {monthSessions.length > 0 ? (
+            monthSessions
+              .sort((a, b) => b.date.localeCompare(a.date))
+              .map(session => (
+                <div key={session.id} className="flex items-center justify-between p-4 bg-white/50 dark:bg-slate-900/40 rounded-2xl border border-slate-100 dark:border-slate-800/60 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center text-xs font-bold text-slate-500 shrink-0 border border-slate-200/50 dark:border-slate-700/50">
+                      {session.patientName[0]}
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-sm font-bold text-slate-900 dark:text-slate-100 truncate max-w-[150px]">
+                        {session.patientName}
+                      </span>
+                      <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                        <CalendarIcon size={10} className="text-primary/70" />
+                        {format(parseISO(session.date), 'dd/MM/yyyy')}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-right flex flex-col items-end">
+                    <span className="text-sm font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
+                      {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(session.price || 0)}
+                    </span>
+                    <span className="text-[8px] font-bold text-emerald-500/60 dark:text-emerald-400/40 uppercase tracking-tighter">Pago</span>
+                  </div>
+                </div>
+              ))
+          ) : (
+            <div className="text-center py-10 bg-slate-50/30 dark:bg-slate-900/20 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
+              <p className="text-slate-400 dark:text-slate-500 italic text-sm">
+                Nenhuma sessão concluída neste mês.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </div>
