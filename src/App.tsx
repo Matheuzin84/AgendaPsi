@@ -42,8 +42,6 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   onAuthStateChanged, 
-  signInWithPopup, 
-  GoogleAuthProvider, 
   signOut, 
   User,
   setPersistence,
