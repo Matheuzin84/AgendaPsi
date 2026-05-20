@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Plus, 
   RefreshCw,
@@ -18,6 +18,7 @@ import {
   ChevronRight,
   MoreVertical,
   CheckCircle2,
+  CheckCircle,
   XCircle,
   Sparkles,
   Loader2,
@@ -31,7 +32,12 @@ import {
   Sun,
   Moon,
   AlertCircle,
-  Save
+  Save,
+  Award,
+  Send,
+  MessageSquare,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -42,7 +48,10 @@ import {
   User,
   setPersistence,
   browserLocalPersistence,
-  browserSessionPersistence
+  browserSessionPersistence,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile
 } from 'firebase/auth';
 import { 
   collection, 
@@ -59,7 +68,7 @@ import {
   getDocs,
   setDoc
 } from 'firebase/firestore';
-import PatientPortal from './components/PatientPortal';
+import PatientProgress from './components/therapy/PatientProgress';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, startOfWeek, endOfWeek, isToday, parseISO, addDays, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { auth, db } from './firebase';
@@ -222,17 +231,45 @@ interface UserProfile {
   email: string;
   role: 'psychologist' | 'patient';
   patientId?: string;
+  psychologistId?: string;
+  createdAt?: any;
 }
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'calendar' | 'patients' | 'daily-schedule'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'calendar' | 'patients' | 'daily-schedule'>('calendar');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [selectedPatientForModal, setSelectedPatientForModal] = useState<Patient | null>(null);
   const [isPatientModalOpen, setIsPatientModalOpen] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
+  const [rememberMe, setRememberMe] = useState(() => {
+    try {
+      const saved = localStorage.getItem('rememberMePsi');
+      return saved !== null ? JSON.parse(saved) : true;
+    } catch {
+      return true;
+    }
+  });
+  const [authEmail, setAuthEmail] = useState(() => {
+    try {
+      return localStorage.getItem('savedEmailPsi') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [authPassword, setAuthPassword] = useState(() => {
+    try {
+      return localStorage.getItem('savedPasswordPsi') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [isRegisterMode, setIsRegisterMode] = useState(false);
+  const [authName, setAuthName] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
   
   const [patients, setPatients] = useState<Patient[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -281,11 +318,21 @@ export default function App() {
       return;
     }
 
-    const unsubProfile = onSnapshot(doc(db, 'userProfiles', user.uid), (snapshot) => {
+    const unsubProfile = onSnapshot(doc(db, 'userProfiles', user.uid), async (snapshot) => {
       if (snapshot.exists()) {
-        setProfile(snapshot.data() as UserProfile);
+        const profileData = snapshot.data() as UserProfile;
+        setProfile(profileData);
       } else {
-        setProfile(null);
+        // No profile yet, create as psychologist by default
+        const newProfile: UserProfile = {
+          uid: user.uid,
+          name: user.displayName || 'Psicólogo(a)',
+          email: user.email || '',
+          role: 'psychologist',
+          createdAt: Timestamp.now()
+        };
+        await setDoc(doc(db, 'userProfiles', user.uid), newProfile);
+        setProfile(newProfile);
       }
     });
 
@@ -318,27 +365,72 @@ export default function App() {
     };
   }, [user]);
 
-  const handleLogin = async () => {
-    const provider = new GoogleAuthProvider();
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError('');
+    setAuthLoading(true);
+
+    if (!authEmail || !authPassword) {
+      setAuthError('Por favor, preencha todos os campos.');
+      setAuthLoading(false);
+      return;
+    }
+
+    if (isRegisterMode && !authName) {
+      setAuthError('Por favor, preencha o seu nome completo.');
+      setAuthLoading(false);
+      return;
+    }
+
     try {
       await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
-      await signInWithPopup(auth, provider);
-    } catch (error) {
-      console.error("Login failed", error);
+      
+      if (isRegisterMode) {
+        // Create user with email and password
+        const userCredential = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
+        const registeredUser = userCredential.user;
+        
+        // Update profile in Auth
+        await updateProfile(registeredUser, {
+          displayName: authName
+        });
+      } else {
+        // Sign in with email and password
+        await signInWithEmailAndPassword(auth, authEmail, authPassword);
+      }
+
+      // If remember me is checked, save credentials
+      if (rememberMe) {
+        localStorage.setItem('rememberMePsi', 'true');
+        localStorage.setItem('savedEmailPsi', authEmail);
+        localStorage.setItem('savedPasswordPsi', authPassword);
+      } else {
+        localStorage.setItem('rememberMePsi', 'false');
+        localStorage.removeItem('savedEmailPsi');
+        localStorage.removeItem('savedPasswordPsi');
+      }
+
+      setAuthError('');
+    } catch (error: any) {
+      console.error("Auth error:", error);
+      let message = 'Ocorreu um erro ao tentar autenticar. Tente novamente.';
+      if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
+        message = 'E-mail ou senha incorretos.';
+      } else if (error.code === 'auth/email-already-in-use') {
+        message = 'Este e-mail já está sendo utilizado por outra conta.';
+      } else if (error.code === 'auth/weak-password') {
+        message = 'A senha deve conter pelo menos 6 caracteres.';
+      } else if (error.code === 'auth/invalid-email') {
+        message = 'Endereço de e-mail inválido.';
+      }
+      setAuthError(message);
+    } finally {
+      setAuthLoading(false);
     }
   };
 
-  const handleLogout = () => signOut(auth);
-
-  const handleSelectRole = async (role: 'psychologist' | 'patient') => {
-    if (!user) return;
-    const newProfile: UserProfile = {
-      uid: user.uid,
-      name: user.displayName || 'Usuário',
-      email: user.email || '',
-      role
-    };
-    await setDoc(doc(db, 'userProfiles', user.uid), newProfile);
+  const handleLogout = () => {
+    signOut(auth);
   };
 
   if (loading) {
@@ -355,91 +447,149 @@ export default function App() {
         <div className="max-w-md w-full text-center space-y-8">
           <div className="flex flex-col items-center">
             <Logo size="lg" vertical />
-            <p className="mt-6 text-slate-600 dark:text-slate-400 text-lg">A ferramenta essencial para psicólogos e seus pacientes.</p>
+            <p className="mt-4 text-slate-600 dark:text-slate-400 text-lg">A agenda inteligente e simplificada para psicólogos.</p>
           </div>
           
           <div className="glass-card p-8 space-y-6">
-            <div className="space-y-2">
-              <h2 className="text-xl font-semibold dark:text-slate-100">Bem-vindo</h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Entre para gerenciar sua clínica ou seus agendamentos.</p>
-            </div>
-            <div className="space-y-4">
+            {/* Tab switch between Login and Register */}
+            <div className="flex border-b border-slate-100 dark:border-slate-800 pb-2">
               <button 
-                onClick={handleLogin}
-                className="w-full btn-primary py-3 text-lg"
+                type="button"
+                onClick={() => {
+                  setIsRegisterMode(false);
+                  setAuthError('');
+                }}
+                className={`flex-1 pb-2 font-semibold text-sm transition-all border-b-2 ${
+                  !isRegisterMode 
+                    ? 'border-primary text-primary dark:text-primary-light' 
+                    : 'border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
+                }`}
               >
-                Entrar com Google
+                Entrar
               </button>
-
-              <label className="flex items-center justify-center gap-2 cursor-pointer group">
-                <div className="relative flex items-center">
-                  <input 
-                    type="checkbox" 
-                    checked={rememberMe}
-                    onChange={e => setRememberMe(e.target.checked)}
-                    className="peer sr-only"
-                  />
-                  <div className="w-5 h-5 border-2 border-slate-300 dark:border-slate-700 rounded-md peer-checked:bg-primary peer-checked:border-primary transition-all" />
-                  <CheckCircle2 className="absolute w-3.5 h-3.5 text-white opacity-0 peer-checked:opacity-100 left-[3px] transition-opacity" />
-                </div>
-                <span className="text-sm text-slate-500 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-300 transition-colors">Mantenha-me conectado</span>
-              </label>
+              <button 
+                type="button"
+                onClick={() => {
+                  setIsRegisterMode(true);
+                  setAuthError('');
+                }}
+                className={`flex-1 pb-2 font-semibold text-sm transition-all border-b-2 ${
+                  isRegisterMode 
+                    ? 'border-primary text-primary dark:text-primary-light' 
+                    : 'border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
+                }`}
+              >
+                Criar Conta
+              </button>
             </div>
+
+            <div className="space-y-2">
+              <h2 className="text-xl font-semibold dark:text-slate-100">
+                {isRegisterMode ? 'Cadastre-se' : 'Bem-vindo de volta'}
+              </h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                {isRegisterMode 
+                  ? 'Crie seu cadastro de profissional para começar a gerenciar sua agenda.' 
+                  : 'Entre para gerenciar seus agendamentos de forma simples e segura.'}
+              </p>
+            </div>
+
+            {authError && (
+              <div className="bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 p-3 rounded-xl flex items-center gap-2 text-sm text-left">
+                <AlertCircle size={18} className="flex-shrink-0" />
+                <span>{authError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleEmailAuth} className="space-y-4 text-left">
+              {isRegisterMode && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Nome Completo
+                  </label>
+                  <input 
+                    type="text" 
+                    value={authName} 
+                    onChange={e => setAuthName(e.target.value)} 
+                    className="input-field" 
+                    placeholder="Seu nome completo"
+                    required={isRegisterMode}
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  E-mail profissional
+                </label>
+                <input 
+                  type="email" 
+                  value={authEmail} 
+                  onChange={e => setAuthEmail(e.target.value)} 
+                  className="input-field" 
+                  placeholder="exemplo@email.com" 
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  Senha
+                </label>
+                <div className="relative">
+                  <input 
+                    type={showPassword ? 'text' : 'password'} 
+                    value={authPassword} 
+                    onChange={e => setAuthPassword(e.target.value)} 
+                    className="input-field pr-10" 
+                    placeholder="Sua senha" 
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-1">
+                <label className="flex items-center gap-2 cursor-pointer group">
+                  <div className="relative flex items-center">
+                    <input 
+                      type="checkbox" 
+                      checked={rememberMe}
+                      onChange={e => setRememberMe(e.target.checked)}
+                      className="peer sr-only"
+                    />
+                    <div className="w-5 h-5 border-2 border-slate-300 dark:border-slate-700 rounded-md peer-checked:bg-primary peer-checked:border-primary transition-all" />
+                    <CheckCircle2 className="absolute w-3.5 h-3.5 text-white opacity-0 peer-checked:opacity-100 left-[3px] transition-opacity" />
+                  </div>
+                  <span className="text-sm text-slate-500 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-300 transition-colors select-none">
+                    Lembrar meus dados de acesso
+                  </span>
+                </label>
+              </div>
+
+              <button 
+                type="submit"
+                disabled={authLoading}
+                className="w-full btn-primary py-3 text-lg flex items-center justify-center gap-2 mt-2"
+              >
+                {authLoading && <Loader2 className="w-5 h-5 animate-spin" />}
+                {isRegisterMode ? 'Cadastrar e Entrar' : 'Entrar na Agenda'}
+              </button>
+            </form>
           </div>
           
           <p className="text-xs text-slate-400 dark:text-slate-500">
-            Psicólogos e pacientes utilizam a mesma conta para acessar suas áreas específicas.
+            Sua agenda e histórico de pacientes são armazenados em ambiente seguro em nuvem.
           </p>
         </div>
       </div>
     );
-  }
-
-  if (!profile) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950 p-4">
-        <div className="max-w-md w-full space-y-8 text-center bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl">
-          <div className="flex justify-center mb-4">
-            <Logo size="md" />
-          </div>
-          <div className="space-y-2">
-            <h2 className="text-2xl font-bold dark:text-white">Bem-vindo ao PsiFlow!</h2>
-            <p className="text-slate-500 dark:text-slate-400">Escolha o seu tipo de acesso:</p>
-          </div>
-          <div className="grid gap-4">
-            <button 
-              onClick={() => handleSelectRole('psychologist')}
-              className="flex items-center gap-4 p-6 bg-primary/5 hover:bg-primary/10 border-2 border-primary/20 rounded-2xl text-left transition-all group"
-            >
-              <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center text-white group-hover:scale-110 transition-transform">
-                <LayoutDashboard size={24} />
-              </div>
-              <div>
-                <p className="font-bold text-lg text-primary">Sou Psicólogo(a)</p>
-                <p className="text-xs text-slate-500">Gerenciar pacientes e agendas</p>
-              </div>
-            </button>
-            <button 
-              onClick={() => handleSelectRole('patient')}
-              className="flex items-center gap-4 p-6 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800/50 dark:hover:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-2xl text-left transition-all group"
-            >
-              <div className="w-12 h-12 bg-slate-200 dark:bg-slate-700 rounded-xl flex items-center justify-center text-slate-500 group-hover:scale-110 transition-transform text-xs font-bold">
-                P
-              </div>
-              <div>
-                <p className="font-bold text-lg text-slate-900 dark:text-white">Sou Paciente</p>
-                <p className="text-xs text-slate-500">Agendar sessões e ver histórico</p>
-              </div>
-            </button>
-          </div>
-          <button onClick={handleLogout} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-sm font-medium">Sair</button>
-        </div>
-      </div>
-    );
-  }
-
-  if (profile.role === 'patient') {
-    return <PatientPortal user={user} profile={profile} onLogout={handleLogout} />;
   }
 
   return (
@@ -480,28 +630,22 @@ export default function App() {
 
         <nav className="flex-1 px-4 space-y-2">
           <NavItem 
-            active={activeTab === 'dashboard'} 
-            onClick={() => { setActiveTab('dashboard'); setIsMobileMenuOpen(false); }}
-            icon={<LayoutDashboard size={20} />}
-            label="Dashboard"
-          />
-          <NavItem 
             active={activeTab === 'calendar'} 
             onClick={() => { setActiveTab('calendar'); setIsMobileMenuOpen(false); }}
             icon={<CalendarIcon size={20} />}
             label="Agenda"
           />
           <NavItem 
+            active={activeTab === 'daily-schedule'} 
+            onClick={() => { setActiveTab('daily-schedule'); setIsMobileMenuOpen(false); }}
+            icon={<Clock size={20} />}
+            label="Atendimentos do Dia"
+          />
+          <NavItem 
             active={activeTab === 'patients'} 
             onClick={() => { setActiveTab('patients'); setIsMobileMenuOpen(false); }}
             icon={<Users size={20} />}
             label="Pacientes"
-          />
-          <NavItem 
-            active={activeTab === 'daily-schedule'} 
-            onClick={() => { setActiveTab('daily-schedule'); setIsMobileMenuOpen(false); }}
-            icon={<Clock size={20} />}
-            label="Agenda Diária"
           />
           
           <div className="pt-4 mt-4 border-t border-slate-100 dark:border-slate-800">
@@ -517,15 +661,15 @@ export default function App() {
 
         <div className="p-4 border-t border-slate-100 dark:border-slate-800">
           <div className="flex items-center gap-3 p-2 mb-2">
-            <img src={user.photoURL || ''} alt="" className="w-8 h-8 rounded-full" />
+            <img src={user.photoURL || ''} alt="" className="w-8 h-8 rounded-full shadow-sm" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{user.displayName}</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{user.email}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 truncate capitalize">Psicólogo(a)</p>
             </div>
           </div>
           <button 
             onClick={handleLogout}
-            className="w-full flex items-center gap-2 p-2 text-sm text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+            className="w-full flex items-center gap-2 p-2 text-sm text-slate-600 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors font-medium"
           >
             <LogOut size={18} />
             Sair
@@ -535,15 +679,18 @@ export default function App() {
 
       {/* Main Content */}
       <main className="flex-1 p-4 md:p-8 overflow-x-hidden">
-        {activeTab === 'dashboard' && (
-          <Dashboard 
-            sessions={sessions} 
-            patients={patients} 
-            onViewCalendar={() => setActiveTab('calendar')}
-          />
-        )}
         {activeTab === 'calendar' && (
           <Calendar sessions={sessions} patients={patients} user={user} />
+        )}
+        {activeTab === 'daily-schedule' && (
+          <DailySchedule 
+            sessions={sessions} 
+            patients={patients} 
+            onOpenPatient={(p) => {
+              setSelectedPatientForModal(p);
+              setIsPatientModalOpen(true);
+            }}
+          />
         )}
         {activeTab === 'patients' && (
           <Patients 
@@ -551,16 +698,6 @@ export default function App() {
             sessions={sessions} 
             medicalRecords={medicalRecords} 
             user={user} 
-            onOpenPatient={(p) => {
-              setSelectedPatientForModal(p);
-              setIsPatientModalOpen(true);
-            }}
-          />
-        )}
-        {activeTab === 'daily-schedule' && (
-          <DailySchedule 
-            sessions={sessions} 
-            patients={patients} 
             onOpenPatient={(p) => {
               setSelectedPatientForModal(p);
               setIsPatientModalOpen(true);
@@ -1751,7 +1888,18 @@ function Patients({ patients, sessions, medicalRecords, user, onOpenPatient }: {
               </div>
               <div className="flex-1 min-w-0">
                 <h3 className="font-bold text-slate-900 dark:text-slate-100 truncate">{patient.name}</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">{patient.email || 'Sem e-mail'}</p>
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">{patient.email || 'Sem e-mail'}</p>
+                  {(patient as any).userId ? (
+                    <span className="flex items-center gap-0.5 text-[8px] font-black uppercase text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded-full">
+                      <CheckCircle size={8} /> On
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-0.5 text-[8px] font-black uppercase text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded-full">
+                      <Clock size={8} /> Pendente
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
             <div className="space-y-2 text-sm text-slate-600 dark:text-slate-400">
@@ -1800,7 +1948,53 @@ function PatientModal({ isOpen, onClose, patient, sessions, medicalRecords, user
   const [notes, setNotes] = useState(patient?.notes || '');
   const [defaultPrice, setDefaultPrice] = useState(patient?.defaultPrice?.toString() || '');
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'info' | 'history'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'history' | 'progress' | 'messages'>('info');
+  const [messages, setMessages] = useState<any[]>([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [sendingMessage, setSendingMessage] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages]);
+
+  useEffect(() => {
+    if (!patient || activeTab !== 'messages') return;
+
+    const q = query(
+      collection(db, 'messages'),
+      where('patientId', '==', patient.id),
+      orderBy('createdAt', 'asc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setMessages(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    return unsubscribe;
+  }, [patient?.id, activeTab]);
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!patient || !newMessage.trim()) return;
+    setSendingMessage(true);
+    try {
+      await addDoc(collection(db, 'messages'), {
+        patientId: patient.id,
+        psychologistId: user.uid,
+        text: newMessage,
+        senderId: user.uid,
+        createdAt: Timestamp.now()
+      });
+      setNewMessage('');
+    } catch (error) {
+      console.error("Error sending message:", error);
+    } finally {
+      setSendingMessage(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1851,6 +2045,18 @@ function PatientModal({ isOpen, onClose, patient, sessions, medicalRecords, user
             >
               Histórico e Prontuários
             </button>
+            <button 
+              onClick={() => setActiveTab('progress')}
+              className={cn("px-3 sm:px-4 py-3 text-xs sm:text-sm font-medium border-b-2 transition-colors", activeTab === 'progress' ? "border-primary text-primary" : "border-transparent text-slate-500 dark:text-slate-400")}
+            >
+              Progresso e Gráficos
+            </button>
+            <button 
+              onClick={() => setActiveTab('messages')}
+              className={cn("px-3 sm:px-4 py-3 text-xs sm:text-sm font-medium border-b-2 transition-colors", activeTab === 'messages' ? "border-primary text-primary" : "border-transparent text-slate-500 dark:text-slate-400")}
+            >
+              Mensagens
+            </button>
           </div>
         )}
 
@@ -1870,17 +2076,6 @@ function PatientModal({ isOpen, onClose, patient, sessions, medicalRecords, user
               <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">E-mail</label>
                 <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="input-field" placeholder="exemplo@email.com" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Valor Padrão da Sessão (R$)</label>
-                <input 
-                  type="number" 
-                  step="0.01" 
-                  value={defaultPrice} 
-                  onChange={e => setDefaultPrice(e.target.value)} 
-                  className="input-field" 
-                  placeholder="0,00" 
-                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Observações Gerais</label>
@@ -1915,7 +2110,7 @@ function PatientModal({ isOpen, onClose, patient, sessions, medicalRecords, user
                 </button>
               )}
             </form>
-          ) : (
+          ) : activeTab === 'history' ? (
             <div className="space-y-6">
               <div className="grid grid-cols-3 gap-4">
                 <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl text-center">
@@ -1987,6 +2182,49 @@ function PatientModal({ isOpen, onClose, patient, sessions, medicalRecords, user
                   </div>
                 )}
               </div>
+            </div>
+          ) : activeTab === 'progress' ? (
+            <div className="space-y-6">
+              <PatientProgress patientId={patient!.id} psychologistId={user.uid} />
+            </div>
+          ) : (
+            <div className="space-y-4 flex flex-col h-[60vh]">
+              <div className="flex-1 overflow-y-auto space-y-4 p-2">
+                {messages.length > 0 ? messages.map(msg => (
+                  <div 
+                    key={msg.id} 
+                    className={cn(
+                      "max-w-[80%] p-3 rounded-2xl text-sm",
+                      msg.senderId === user.uid 
+                        ? "ml-auto bg-primary text-white rounded-tr-none" 
+                        : "mr-auto bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 rounded-tl-none"
+                    )}
+                  >
+                    {msg.text}
+                    <p className={cn("text-[9px] mt-1 opacity-70 text-right", msg.senderId === user.uid ? "text-white" : "text-slate-500")}>
+                      {msg.createdAt?.toDate ? format(msg.createdAt.toDate(), 'HH:mm') : ''}
+                    </p>
+                  </div>
+                )) : (
+                  <div className="h-full flex flex-col items-center justify-center text-slate-400 opacity-50">
+                    <MessageSquare size={48} className="mb-2" />
+                    <p>Nenhuma mensagem enviada.</p>
+                  </div>
+                )}
+                <div ref={chatEndRef} />
+              </div>
+              <form onSubmit={handleSendMessage} className="flex gap-2 p-2 border-t border-slate-100 dark:border-slate-800">
+                <input 
+                  type="text" 
+                  value={newMessage} 
+                  onChange={e => setNewMessage(e.target.value)}
+                  placeholder="Escreva uma mensagem..."
+                  className="input-field flex-1"
+                />
+                <button type="submit" disabled={sendingMessage || !newMessage.trim()} className="p-3 bg-primary text-white rounded-xl hover:bg-primary/90 transition-all disabled:opacity-50">
+                  {sendingMessage ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+                </button>
+              </form>
             </div>
           )}
         </div>

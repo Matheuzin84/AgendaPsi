@@ -163,5 +163,35 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && (isDocOwner() || isAdmin());
     }
 
+    // Progress Metrics
+    match /progressMetrics/{metricId} {
+      allow read: if isAuthenticated() && (
+        isDocOwner() || 
+        isAdmin() ||
+        (resource.data.patientId == request.auth.uid) ||
+        (exists(/databases/$(database)/documents/patients/$(resource.data.patientId)) && 
+         get(/databases/$(database)/documents/patients/$(resource.data.patientId)).data.userId == request.auth.uid)
+      );
+      allow create: if isAuthenticated() && isNewDocOwner();
+      allow update: if isAuthenticated() && isDocOwner();
+      allow delete: if isAuthenticated() && (isDocOwner() || isAdmin());
+    }
+
+    // Supervisions
+    match /supervisions/{supervisionId} {
+      allow read: if isAuthenticated() && (request.auth.uid == resource.data.psychologistId || request.auth.uid == resource.data.supervisorId || isAdmin());
+      allow create: if isAuthenticated() && (request.auth.uid == request.resource.data.psychologistId || request.auth.uid == request.resource.data.supervisorId);
+      allow update: if isAuthenticated() && (request.auth.uid == resource.data.psychologistId || request.auth.uid == resource.data.supervisorId);
+      allow delete: if isAdmin();
+    }
+
+    // Competencies
+    match /competencies/{competencyId} {
+      allow read: if isAuthenticated() && (isDocOwner() || isAdmin());
+      allow create: if isAuthenticated() && isNewDocOwner();
+      allow update: if isAuthenticated() && isDocOwner();
+      allow delete: if isAdmin();
+    }
+
   }
 }

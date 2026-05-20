@@ -65,6 +65,46 @@
         "psychologistId": { "type": "string", "description": "ID of the psychologist" }
       },
       "required": ["patientId", "sessionId", "psychologistId"]
+    },
+    "ProgressMetric": {
+      "title": "Progress Metric",
+      "description": "Quantitative metrics for tracking patient progress",
+      "type": "object",
+      "properties": {
+        "patientId": { "type": "string", "description": "ID of the patient" },
+        "date": { "type": "string", "format": "date", "description": "Date of assessment" },
+        "category": { "type": "string", "description": "Category (e.g., Anxiety, Mood, Goal Attainment)" },
+        "value": { "type": "number", "description": "Numeric score (0-100)" },
+        "psychologistId": { "type": "string", "description": "ID of the psychologist" }
+      },
+      "required": ["patientId", "date", "category", "value", "psychologistId"]
+    },
+    "Supervision": {
+      "title": "Supervision",
+      "description": "Supervision record and feedback between psychologists",
+      "type": "object",
+      "properties": {
+        "psychologistId": { "type": "string", "description": "ID of the supervisee" },
+        "supervisorId": { "type": "string", "description": "ID of the supervisor" },
+        "date": { "type": "string", "format": "date", "description": "Date of supervision" },
+        "caseSummary": { "type": "string", "description": "Summary of the case discussed" },
+        "feedback": { "type": "string", "description": "Rich feedback from supervisor" },
+        "reflections": { "type": "string", "description": "Post-session reflections from supervisee" },
+        "competencyUpdate": { "type": "object", "description": "Map of competency improvements" }
+      },
+      "required": ["psychologistId", "supervisorId", "date"]
+    },
+    "Competency": {
+      "title": "Competency",
+      "description": "Psychologist skill evolution map",
+      "type": "object",
+      "properties": {
+        "psychologistId": { "type": "string", "description": "ID of the psychologist" },
+        "skill": { "type": "string", "description": "Skill name (e.g., Clinical Listening, Ethics, Technique)" },
+        "level": { "type": "number", "description": "Current proficiency level (1-5)" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["psychologistId", "skill", "level"]
     }
   },
   "firestore": {
@@ -79,6 +119,18 @@
     "/medicalRecords/{recordId}": {
       "schema": "MedicalRecord",
       "description": "Collection of medical records"
+    },
+    "/progressMetrics/{metricId}": {
+      "schema": "ProgressMetric",
+      "description": "Progress tracking metrics"
+    },
+    "/supervisions/{supervisionId}": {
+      "schema": "Supervision",
+      "description": "Supervision history"
+    },
+    "/competencies/{competencyId}": {
+      "schema": "Competency",
+      "description": "Professional competency levels"
     },
     "/userProfiles/{userId}": {
       "schema": "UserProfile",
