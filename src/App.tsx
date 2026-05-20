@@ -49,7 +49,8 @@ import {
   browserSessionPersistence,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  updateProfile
+  updateProfile,
+  sendPasswordResetEmail
 } from 'firebase/auth';
 import { 
   collection, 
@@ -268,6 +269,8 @@ export default function App() {
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
+  const [isForgotPasswordMode, setIsForgotPasswordMode] = useState(false);
+  const [forgotPasswordSuccess, setForgotPasswordSuccess] = useState('');
   
   const [patients, setPatients] = useState<Patient[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -415,9 +418,39 @@ export default function App() {
       if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
         message = 'E-mail ou senha incorretos.';
       } else if (error.code === 'auth/email-already-in-use') {
-        message = 'Este e-mail já está sendo utilizado por outra conta.';
+        message = 'Este e-mail já está sendo utilizado por outra conta. Caso já tenha acessado anteriormente com o Google, você pode cadastrar uma senha clicando em "Esqueci minha senha" abaixo.';
       } else if (error.code === 'auth/weak-password') {
         message = 'A senha deve conter pelo menos 6 caracteres.';
+      } else if (error.code === 'auth/invalid-email') {
+        message = 'Endereço de e-mail inválido.';
+      }
+      setAuthError(message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handlePasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError('');
+    setForgotPasswordSuccess('');
+    setAuthLoading(true);
+
+    if (!authEmail) {
+      setAuthError('Por favor, digite o seu e-mail para enviar o link de redefinição.');
+      setAuthLoading(false);
+      return;
+    }
+
+    try {
+      await sendPasswordResetEmail(auth, authEmail);
+      setForgotPasswordSuccess('Link de redefinição de senha enviado! Verifique sua caixa de entrada e siga as instruções para cadastrar/alterar sua senha.');
+      setAuthError('');
+    } catch (error: any) {
+      console.error("Password reset error:", error);
+      let message = 'Ocorreu um erro ao tentar enviar o link. Verifique o e-mail digitado e tente novamente.';
+      if (error.code === 'auth/user-not-found') {
+        message = 'Nenhum usuário cadastrado com este e-mail.';
       } else if (error.code === 'auth/invalid-email') {
         message = 'Endereço de e-mail inválido.';
       }
@@ -449,137 +482,215 @@ export default function App() {
           </div>
           
           <div className="glass-card p-8 space-y-6">
-            {/* Tab switch between Login and Register */}
-            <div className="flex border-b border-slate-100 dark:border-slate-800 pb-2">
-              <button 
-                type="button"
-                onClick={() => {
-                  setIsRegisterMode(false);
-                  setAuthError('');
-                }}
-                className={`flex-1 pb-2 font-semibold text-sm transition-all border-b-2 ${
-                  !isRegisterMode 
-                    ? 'border-primary text-primary dark:text-primary-light' 
-                    : 'border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
-                }`}
-              >
-                Entrar
-              </button>
-              <button 
-                type="button"
-                onClick={() => {
-                  setIsRegisterMode(true);
-                  setAuthError('');
-                }}
-                className={`flex-1 pb-2 font-semibold text-sm transition-all border-b-2 ${
-                  isRegisterMode 
-                    ? 'border-primary text-primary dark:text-primary-light' 
-                    : 'border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
-                }`}
-              >
-                Criar Conta
-              </button>
-            </div>
-
-            <div className="space-y-2">
-              <h2 className="text-xl font-semibold dark:text-slate-100">
-                {isRegisterMode ? 'Cadastre-se' : 'Bem-vindo de volta'}
-              </h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                {isRegisterMode 
-                  ? 'Crie seu cadastro de profissional para começar a gerenciar sua agenda.' 
-                  : 'Entre para gerenciar seus agendamentos de forma simples e segura.'}
-              </p>
-            </div>
-
-            {authError && (
-              <div className="bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 p-3 rounded-xl flex items-center gap-2 text-sm text-left">
-                <AlertCircle size={18} className="flex-shrink-0" />
-                <span>{authError}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleEmailAuth} className="space-y-4 text-left">
-              {isRegisterMode && (
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                    Nome Completo
-                  </label>
-                  <input 
-                    type="text" 
-                    value={authName} 
-                    onChange={e => setAuthName(e.target.value)} 
-                    className="input-field" 
-                    placeholder="Seu nome completo"
-                    required={isRegisterMode}
-                  />
+            {isForgotPasswordMode ? (
+              <>
+                <div className="space-y-2">
+                  <h2 className="text-xl font-semibold dark:text-slate-100">Recuperar Senha</h2>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    Insira seu e-mail profissional cadastrado. Enviaremos um link seguro para você cadastrar ou redefinir sua senha.
+                  </p>
                 </div>
-              )}
 
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                  E-mail profissional
-                </label>
-                <input 
-                  type="email" 
-                  value={authEmail} 
-                  onChange={e => setAuthEmail(e.target.value)} 
-                  className="input-field" 
-                  placeholder="exemplo@email.com" 
-                  required
-                />
-              </div>
+                {authError && (
+                  <div className="bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 p-3 rounded-xl flex items-center gap-2 text-sm text-left">
+                    <AlertCircle size={18} className="flex-shrink-0" />
+                    <span>{authError}</span>
+                  </div>
+                )}
 
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                  Senha
-                </label>
-                <div className="relative">
-                  <input 
-                    type={showPassword ? 'text' : 'password'} 
-                    value={authPassword} 
-                    onChange={e => setAuthPassword(e.target.value)} 
-                    className="input-field pr-10" 
-                    placeholder="Sua senha" 
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                {forgotPasswordSuccess && (
+                  <div className="bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 p-3 rounded-xl flex items-center gap-2 text-sm text-left">
+                    <CheckCircle2 size={18} className="flex-shrink-0" />
+                    <span>{forgotPasswordSuccess}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handlePasswordReset} className="space-y-4 text-left">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      E-mail cadastrado
+                    </label>
+                    <input 
+                      type="email" 
+                      value={authEmail} 
+                      onChange={e => setAuthEmail(e.target.value)} 
+                      className="input-field" 
+                      placeholder="exemplo@email.com" 
+                      required
+                    />
+                  </div>
+
+                  <button 
+                    type="submit"
+                    disabled={authLoading}
+                    className="w-full btn-primary py-3 text-lg flex items-center justify-center gap-2 mt-2"
                   >
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    {authLoading && <Loader2 className="w-5 h-5 animate-spin" />}
+                    Enviar Link de Recuperação
+                  </button>
+
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setIsForgotPasswordMode(false);
+                      setAuthError('');
+                      setForgotPasswordSuccess('');
+                    }}
+                    className="w-full text-center text-sm text-primary dark:text-primary-light hover:underline mt-4 font-medium"
+                  >
+                    Voltar para o Login
+                  </button>
+                </form>
+              </>
+            ) : (
+              <>
+                {/* Tab switch between Login and Register */}
+                <div className="flex border-b border-slate-100 dark:border-slate-800 pb-2">
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setIsRegisterMode(false);
+                      setAuthError('');
+                    }}
+                    className={`flex-1 pb-2 font-semibold text-sm transition-all border-b-2 ${
+                      !isRegisterMode 
+                        ? 'border-primary text-primary dark:text-primary-light' 
+                        : 'border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
+                    }`}
+                  >
+                    Entrar
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setIsRegisterMode(true);
+                      setAuthError('');
+                    }}
+                    className={`flex-1 pb-2 font-semibold text-sm transition-all border-b-2 ${
+                      isRegisterMode 
+                        ? 'border-primary text-primary dark:text-primary-light' 
+                        : 'border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
+                    }`}
+                  >
+                    Criar Conta
                   </button>
                 </div>
-              </div>
 
-              <div className="flex items-center justify-between pt-1">
-                <label className="flex items-center gap-2 cursor-pointer group">
-                  <div className="relative flex items-center">
-                    <input 
-                      type="checkbox" 
-                      checked={rememberMe}
-                      onChange={e => setRememberMe(e.target.checked)}
-                      className="peer sr-only"
-                    />
-                    <div className="w-5 h-5 border-2 border-slate-300 dark:border-slate-700 rounded-md peer-checked:bg-primary peer-checked:border-primary transition-all" />
-                    <CheckCircle2 className="absolute w-3.5 h-3.5 text-white opacity-0 peer-checked:opacity-100 left-[3px] transition-opacity" />
+                <div className="space-y-2">
+                  <h2 className="text-xl font-semibold dark:text-slate-100">
+                    {isRegisterMode ? 'Cadastre-se' : 'Bem-vindo de volta'}
+                  </h2>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                    {isRegisterMode 
+                      ? 'Crie seu cadastro de profissional para começar a gerenciar sua agenda.' 
+                      : 'Entre para gerenciar seus agendamentos de forma simples e segura.'}
+                  </p>
+                </div>
+
+                {authError && (
+                  <div className="bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 p-3 rounded-xl flex items-center gap-2 text-sm text-left">
+                    <AlertCircle size={18} className="flex-shrink-0" />
+                    <span>{authError}</span>
                   </div>
-                  <span className="text-sm text-slate-500 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-300 transition-colors select-none">
-                    Lembrar meus dados de acesso
-                  </span>
-                </label>
-              </div>
+                )}
 
-              <button 
-                type="submit"
-                disabled={authLoading}
-                className="w-full btn-primary py-3 text-lg flex items-center justify-center gap-2 mt-2"
-              >
-                {authLoading && <Loader2 className="w-5 h-5 animate-spin" />}
-                {isRegisterMode ? 'Cadastrar e Entrar' : 'Entrar na Agenda'}
-              </button>
-            </form>
+                <form onSubmit={handleEmailAuth} className="space-y-4 text-left">
+                  {isRegisterMode && (
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                        Nome Completo
+                      </label>
+                      <input 
+                        type="text" 
+                        value={authName} 
+                        onChange={e => setAuthName(e.target.value)} 
+                        className="input-field" 
+                        placeholder="Seu nome completo"
+                        required={isRegisterMode}
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      E-mail profissional
+                    </label>
+                    <input 
+                      type="email" 
+                      value={authEmail} 
+                      onChange={e => setAuthEmail(e.target.value)} 
+                      className="input-field" 
+                      placeholder="exemplo@email.com" 
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Senha
+                    </label>
+                    <div className="relative">
+                      <input 
+                        type={showPassword ? 'text' : 'password'} 
+                        value={authPassword} 
+                        onChange={e => setAuthPassword(e.target.value)} 
+                        className="input-field pr-10" 
+                        placeholder="Sua senha" 
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                      >
+                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <label className="flex items-center gap-2 cursor-pointer group">
+                      <div className="relative flex items-center">
+                        <input 
+                          type="checkbox" 
+                          checked={rememberMe}
+                          onChange={e => setRememberMe(e.target.checked)}
+                          className="peer sr-only"
+                        />
+                        <div className="w-5 h-5 border-2 border-slate-300 dark:border-slate-700 rounded-md peer-checked:bg-primary peer-checked:border-primary transition-all" />
+                        <CheckCircle2 className="absolute w-3.5 h-3.5 text-white opacity-0 peer-checked:opacity-100 left-[3px] transition-opacity" />
+                      </div>
+                      <span className="text-sm text-slate-500 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-300 transition-colors select-none">
+                        Lembrar meus dados
+                      </span>
+                    </label>
+
+                    {!isRegisterMode && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsForgotPasswordMode(true);
+                          setAuthError('');
+                          setForgotPasswordSuccess('');
+                        }}
+                        className="text-sm font-medium text-primary dark:text-primary-light hover:underline"
+                      >
+                        Esqueceu a senha?
+                      </button>
+                    )}
+                  </div>
+
+                  <button 
+                    type="submit"
+                    disabled={authLoading}
+                    className="w-full btn-primary py-3 text-lg flex items-center justify-center gap-2 mt-2"
+                  >
+                    {authLoading && <Loader2 className="w-5 h-5 animate-spin" />}
+                    {isRegisterMode ? 'Cadastrar e Entrar' : 'Entrar na Agenda'}
+                  </button>
+                </form>
+              </>
+            )}
           </div>
           
           <p className="text-xs text-slate-400 dark:text-slate-500">
