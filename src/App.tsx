@@ -35,9 +35,7 @@ import {
   Save,
   Award,
   Send,
-  MessageSquare,
-  Eye,
-  EyeOff
+  MessageSquare
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -47,10 +45,8 @@ import {
   setPersistence,
   browserLocalPersistence,
   browserSessionPersistence,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  updateProfile,
-  sendPasswordResetEmail
+  signInWithPopup,
+  GoogleAuthProvider
 } from 'firebase/auth';
 import { 
   collection, 
@@ -250,27 +246,8 @@ export default function App() {
       return true;
     }
   });
-  const [authEmail, setAuthEmail] = useState(() => {
-    try {
-      return localStorage.getItem('savedEmailPsi') || '';
-    } catch {
-      return '';
-    }
-  });
-  const [authPassword, setAuthPassword] = useState(() => {
-    try {
-      return localStorage.getItem('savedPasswordPsi') || '';
-    } catch {
-      return '';
-    }
-  });
-  const [isRegisterMode, setIsRegisterMode] = useState(false);
-  const [authName, setAuthName] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
-  const [isForgotPasswordMode, setIsForgotPasswordMode] = useState(false);
-  const [forgotPasswordSuccess, setForgotPasswordSuccess] = useState('');
   
   const [patients, setPatients] = useState<Patient[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -366,95 +343,18 @@ export default function App() {
     };
   }, [user]);
 
-  const handleEmailAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleGoogleLogin = async () => {
     setAuthError('');
     setAuthLoading(true);
-
-    if (!authEmail || !authPassword) {
-      setAuthError('Por favor, preencha todos os campos.');
-      setAuthLoading(false);
-      return;
-    }
-
-    if (isRegisterMode && !authName) {
-      setAuthError('Por favor, preencha o seu nome completo.');
-      setAuthLoading(false);
-      return;
-    }
-
+    const provider = new GoogleAuthProvider();
     try {
       await setPersistence(auth, rememberMe ? browserLocalPersistence : browserSessionPersistence);
-      
-      if (isRegisterMode) {
-        // Create user with email and password
-        const userCredential = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
-        const registeredUser = userCredential.user;
-        
-        // Update profile in Auth
-        await updateProfile(registeredUser, {
-          displayName: authName
-        });
-      } else {
-        // Sign in with email and password
-        await signInWithEmailAndPassword(auth, authEmail, authPassword);
-      }
-
-      // If remember me is checked, save credentials
-      if (rememberMe) {
-        localStorage.setItem('rememberMePsi', 'true');
-        localStorage.setItem('savedEmailPsi', authEmail);
-        localStorage.setItem('savedPasswordPsi', authPassword);
-      } else {
-        localStorage.setItem('rememberMePsi', 'false');
-        localStorage.removeItem('savedEmailPsi');
-        localStorage.removeItem('savedPasswordPsi');
-      }
-
-      setAuthError('');
+      await signInWithPopup(auth, provider);
     } catch (error: any) {
-      console.error("Auth error:", error);
-      let message = 'Ocorreu um erro ao tentar autenticar. Tente novamente.';
-      if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
-        message = 'E-mail ou senha incorretos.';
-      } else if (error.code === 'auth/email-already-in-use') {
-        message = 'Este e-mail já está sendo utilizado por outra conta. Caso já tenha acessado anteriormente com o Google, você pode cadastrar uma senha clicando em "Esqueci minha senha" abaixo.';
-      } else if (error.code === 'auth/weak-password') {
-        message = 'A senha deve conter pelo menos 6 caracteres.';
-      } else if (error.code === 'auth/invalid-email') {
-        message = 'Endereço de e-mail inválido.';
+      console.error("Google Login failed", error);
+      if (error.code !== 'auth/popup-closed-by-user') {
+        setAuthError('Falha ao autenticar com o Google. Tente novamente.');
       }
-      setAuthError(message);
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
-  const handlePasswordReset = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthError('');
-    setForgotPasswordSuccess('');
-    setAuthLoading(true);
-
-    if (!authEmail) {
-      setAuthError('Por favor, digite o seu e-mail para enviar o link de redefinição.');
-      setAuthLoading(false);
-      return;
-    }
-
-    try {
-      await sendPasswordResetEmail(auth, authEmail);
-      setForgotPasswordSuccess('Link de redefinição de senha enviado! Verifique sua caixa de entrada e siga as instruções para cadastrar/alterar sua senha.');
-      setAuthError('');
-    } catch (error: any) {
-      console.error("Password reset error:", error);
-      let message = 'Ocorreu um erro ao tentar enviar o link. Verifique o e-mail digitado e tente novamente.';
-      if (error.code === 'auth/user-not-found') {
-        message = 'Nenhum usuário cadastrado com este e-mail.';
-      } else if (error.code === 'auth/invalid-email') {
-        message = 'Endereço de e-mail inválido.';
-      }
-      setAuthError(message);
     } finally {
       setAuthLoading(false);
     }
@@ -482,215 +382,68 @@ export default function App() {
           </div>
           
           <div className="glass-card p-8 space-y-6">
-            {isForgotPasswordMode ? (
-              <>
-                <div className="space-y-2">
-                  <h2 className="text-xl font-semibold dark:text-slate-100">Recuperar Senha</h2>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Insira seu e-mail profissional cadastrado. Enviaremos um link seguro para você cadastrar ou redefinir sua senha.
-                  </p>
-                </div>
+            <div className="space-y-2">
+              <h2 className="text-xl font-semibold dark:text-slate-100">Bem-vindo</h2>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Entre com sua Conta Google para gerenciar seus agendamentos de forma simples e segura.
+              </p>
+            </div>
 
-                {authError && (
-                  <div className="bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 p-3 rounded-xl flex items-center gap-2 text-sm text-left">
-                    <AlertCircle size={18} className="flex-shrink-0" />
-                    <span>{authError}</span>
-                  </div>
-                )}
-
-                {forgotPasswordSuccess && (
-                  <div className="bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 p-3 rounded-xl flex items-center gap-2 text-sm text-left">
-                    <CheckCircle2 size={18} className="flex-shrink-0" />
-                    <span>{forgotPasswordSuccess}</span>
-                  </div>
-                )}
-
-                <form onSubmit={handlePasswordReset} className="space-y-4 text-left">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                      E-mail cadastrado
-                    </label>
-                    <input 
-                      type="email" 
-                      value={authEmail} 
-                      onChange={e => setAuthEmail(e.target.value)} 
-                      className="input-field" 
-                      placeholder="exemplo@email.com" 
-                      required
-                    />
-                  </div>
-
-                  <button 
-                    type="submit"
-                    disabled={authLoading}
-                    className="w-full btn-primary py-3 text-lg flex items-center justify-center gap-2 mt-2"
-                  >
-                    {authLoading && <Loader2 className="w-5 h-5 animate-spin" />}
-                    Enviar Link de Recuperação
-                  </button>
-
-                  <button 
-                    type="button"
-                    onClick={() => {
-                      setIsForgotPasswordMode(false);
-                      setAuthError('');
-                      setForgotPasswordSuccess('');
-                    }}
-                    className="w-full text-center text-sm text-primary dark:text-primary-light hover:underline mt-4 font-medium"
-                  >
-                    Voltar para o Login
-                  </button>
-                </form>
-              </>
-            ) : (
-              <>
-                {/* Tab switch between Login and Register */}
-                <div className="flex border-b border-slate-100 dark:border-slate-800 pb-2">
-                  <button 
-                    type="button"
-                    onClick={() => {
-                      setIsRegisterMode(false);
-                      setAuthError('');
-                    }}
-                    className={`flex-1 pb-2 font-semibold text-sm transition-all border-b-2 ${
-                      !isRegisterMode 
-                        ? 'border-primary text-primary dark:text-primary-light' 
-                        : 'border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
-                    }`}
-                  >
-                    Entrar
-                  </button>
-                  <button 
-                    type="button"
-                    onClick={() => {
-                      setIsRegisterMode(true);
-                      setAuthError('');
-                    }}
-                    className={`flex-1 pb-2 font-semibold text-sm transition-all border-b-2 ${
-                      isRegisterMode 
-                        ? 'border-primary text-primary dark:text-primary-light' 
-                        : 'border-transparent text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'
-                    }`}
-                  >
-                    Criar Conta
-                  </button>
-                </div>
-
-                <div className="space-y-2">
-                  <h2 className="text-xl font-semibold dark:text-slate-100">
-                    {isRegisterMode ? 'Cadastre-se' : 'Bem-vindo de volta'}
-                  </h2>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    {isRegisterMode 
-                      ? 'Crie seu cadastro de profissional para começar a gerenciar sua agenda.' 
-                      : 'Entre para gerenciar seus agendamentos de forma simples e segura.'}
-                  </p>
-                </div>
-
-                {authError && (
-                  <div className="bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 p-3 rounded-xl flex items-center gap-2 text-sm text-left">
-                    <AlertCircle size={18} className="flex-shrink-0" />
-                    <span>{authError}</span>
-                  </div>
-                )}
-
-                <form onSubmit={handleEmailAuth} className="space-y-4 text-left">
-                  {isRegisterMode && (
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                        Nome Completo
-                      </label>
-                      <input 
-                        type="text" 
-                        value={authName} 
-                        onChange={e => setAuthName(e.target.value)} 
-                        className="input-field" 
-                        placeholder="Seu nome completo"
-                        required={isRegisterMode}
-                      />
-                    </div>
-                  )}
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                      E-mail profissional
-                    </label>
-                    <input 
-                      type="email" 
-                      value={authEmail} 
-                      onChange={e => setAuthEmail(e.target.value)} 
-                      className="input-field" 
-                      placeholder="exemplo@email.com" 
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                      Senha
-                    </label>
-                    <div className="relative">
-                      <input 
-                        type={showPassword ? 'text' : 'password'} 
-                        value={authPassword} 
-                        onChange={e => setAuthPassword(e.target.value)} 
-                        className="input-field pr-10" 
-                        placeholder="Sua senha" 
-                        required
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
-                      >
-                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-1">
-                    <label className="flex items-center gap-2 cursor-pointer group">
-                      <div className="relative flex items-center">
-                        <input 
-                          type="checkbox" 
-                          checked={rememberMe}
-                          onChange={e => setRememberMe(e.target.checked)}
-                          className="peer sr-only"
-                        />
-                        <div className="w-5 h-5 border-2 border-slate-300 dark:border-slate-700 rounded-md peer-checked:bg-primary peer-checked:border-primary transition-all" />
-                        <CheckCircle2 className="absolute w-3.5 h-3.5 text-white opacity-0 peer-checked:opacity-100 left-[3px] transition-opacity" />
-                      </div>
-                      <span className="text-sm text-slate-500 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-300 transition-colors select-none">
-                        Lembrar meus dados
-                      </span>
-                    </label>
-
-                    {!isRegisterMode && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsForgotPasswordMode(true);
-                          setAuthError('');
-                          setForgotPasswordSuccess('');
-                        }}
-                        className="text-sm font-medium text-primary dark:text-primary-light hover:underline"
-                      >
-                        Esqueceu a senha?
-                      </button>
-                    )}
-                  </div>
-
-                  <button 
-                    type="submit"
-                    disabled={authLoading}
-                    className="w-full btn-primary py-3 text-lg flex items-center justify-center gap-2 mt-2"
-                  >
-                    {authLoading && <Loader2 className="w-5 h-5 animate-spin" />}
-                    {isRegisterMode ? 'Cadastrar e Entrar' : 'Entrar na Agenda'}
-                  </button>
-                </form>
-              </>
+            {authError && (
+              <div className="bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 p-3 rounded-xl flex items-center gap-2 text-sm text-left">
+                <AlertCircle size={18} className="flex-shrink-0" />
+                <span>{authError}</span>
+              </div>
             )}
+
+            <div className="space-y-4">
+              <button 
+                type="button"
+                onClick={handleGoogleLogin}
+                disabled={authLoading}
+                className="w-full bg-white hover:bg-slate-50 text-slate-700 dark:bg-slate-900 dark:hover:bg-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-800 py-3.5 px-4 rounded-xl font-semibold text-base transition-all flex items-center justify-center gap-3 shadow-md cursor-pointer disabled:opacity-50"
+              >
+                {authLoading ? (
+                  <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                ) : (
+                  <svg className="w-5 h-5 flex-shrink-0" viewBox="0 0 24 24">
+                    <path
+                      fill="#EA4335"
+                      d="M12 5.04c1.66 0 3.2.57 4.38 1.69l3.27-3.27C17.67 1.54 14.98 1 12 1 7.35 1 3.37 3.67 1.39 7.56l3.89 3.02C6.21 7.52 8.85 5.04 12 5.04z"
+                    />
+                    <path
+                      fill="#4285F4"
+                      d="M23.49 12.27c0-.81-.07-1.59-.2-2.34H12v4.44h6.44c-.28 1.48-1.12 2.73-2.38 3.58l3.7 2.87c2.16-1.99 3.73-4.92 3.73-8.55z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.28 14.42c-.24-.72-.38-1.49-.38-2.3c0-.81.14-1.58.38-2.3L1.39 6.8C.5 8.56 0 10.48 0 12.5s.5 3.94 1.39 5.7l3.89-3.02c-.24-.72-.38-1.49-.38-2.32z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 23c3.24 0 5.97-1.07 7.96-2.91l-3.7-2.87c-1.03.69-2.35 1.1-4.26 1.1-3.15 0-5.79-2.48-6.72-5.54L1.39 15.8C3.37 19.69 7.35 23 12 23z"
+                    />
+                  </svg>
+                )}
+                {authLoading ? 'Conectando...' : 'Entrar com Google'}
+              </button>
+
+              <label className="flex items-center justify-center gap-2 cursor-pointer group pt-1">
+                <div className="relative flex items-center">
+                  <input 
+                    type="checkbox" 
+                    checked={rememberMe}
+                    onChange={e => setRememberMe(e.target.checked)}
+                    className="peer sr-only"
+                  />
+                  <div className="w-5 h-5 border-2 border-slate-300 dark:border-slate-700 rounded-md peer-checked:bg-primary peer-checked:border-primary transition-all" />
+                  <CheckCircle2 className="absolute w-3.5 h-3.5 text-white opacity-0 peer-checked:opacity-100 left-[3px] transition-opacity" />
+                </div>
+                <span className="text-sm text-slate-500 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-300 transition-colors select-none">
+                  Mantenha-me conectado
+                </span>
+              </label>
+            </div>
           </div>
           
           <p className="text-xs text-slate-400 dark:text-slate-500">
